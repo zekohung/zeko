@@ -1,7 +1,7 @@
 /*************************************
 [rewrite_local]
 
-^https:\/\/toblog\.ctobsnssdk\.com\/service\/2\/log_settings url script-response-body  https://raw.githubusercontent.com/zekohung/zoo/main/xfsj.js
+^https:\/\/toblog\.ctobsnssdk\.com\/service\/2\/log_settings url script-response-body  https://raw.githubusercontent.com/zekohung/zeko/main/xfsj.js
 
 [mitm]
 hostname = toblog.ctobsnssdk.com
