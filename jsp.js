@@ -1,6 +1,6 @@
 function GetAuthorizationHeaderValue() {
-  // 检查请求URL是否以 https://app.jxgdw.com/ 开头
-  if (!$request.url.startsWith('https://app.jxgdw.com/')) {
+  // 检查请求URL是否以 https://app.jxgdw.com/api/advert/sign 开头
+  if (!$request.url.startsWith('hhttps://app.jxgdw.com/api/advert/sign/')) {
     $log(`${$name} 非 ${$name} 客户端URL请求，跳过脚本`);
     return;
   }
