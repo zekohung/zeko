@@ -1,33 +1,20 @@
-function captureAuthHeader(request) {
-    // 检查请求是否是我们想要拦截的类型
-    if (request.method === 'GET' && request.url.indexOf('your-target-url') >= 0) {
-        // 发起新的 POST 请求
-        $httpClient.post('https://app.jxgdw.com/api/advert/sign', {
-            body: {
-                // 这里是你的 POST 请求体内容
-            },
-            headers: {
-                // 如果需要，可以在这里设置额外的头部
-            }
-        }, function(error, response, data) {
-            if (error) {
-                console.error('Error:', error);
-            } else {
-                // 从响应中提取 Authorization 头部
-                const authHeader = response.headers['Authorization'];
-                console.log('Captured Authorization:', authHeader);
-                
-                // 如果你需要将 Authorization 头部添加到原始请求中
-                if (authHeader) {
-                    request.headers['Authorization'] = authHeader;
-                }
-                
-                // 使用修改后的请求对象结束脚本执行
-                $done({response: response, request: request});
-            }
-        });
-    } else {
-        // 如果不是我们想要拦截的请求，直接返回原始请求
-        return request;
+function getAuthHeader() {
+    // 检查请求的 URL 是否是我们想要处理的
+    if ($request.url === 'https://app.jxgdw.com/api/advert/sign') {
+        let data = $response.body;
+        let result = JSON.parse(data);
+        
+        // 假设 result 中包含了一个 token 字段，我们可以使用它
+        if (result.code === 0 && result.message === "ok" && result.result && result.result.token) {
+            let token = result.result.token;
+            
+            // 打印并记录 token 作为可能的 Authorization 值
+            console.log('Captured token for Authorization:', token);
+            $.log(`Token 获取成功🎉, Token: ${token}`);
+            $.msg('Token 获取成功🎉', `${token}`);
+        }
     }
 }
+
+// 调用函数
+getAuthHeader();
