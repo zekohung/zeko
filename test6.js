@@ -1,6 +1,6 @@
 function getAuthHeader() {
   // 检查请求的URL是否为我们关注的URL
-  if ($request.url === 'https://app.jxgdw.com/api/advert/sign') {
+  if ($request.url === 'https://app.jxgdw.com') {
     // 从请求头中获取Authorization值
     let authValue = $request.headers['Authorization'];
     
