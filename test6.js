@@ -1,20 +1,17 @@
 function getAuthHeader() {
-    // 检查请求的 URL 是否是我们想要处理的
-    if ($request.url === 'https://app.jxgdw.com/api/advert/sign') {
-        let data = $response.body;
-        let result = JSON.parse(data);
-        
-        // 假设 result 中包含了一个 token 字段，我们可以使用它
-        if (result.code === 0 && result.message === "ok" && result.result && result.result.token) {
-            let token = result.result.token;
-            
-            // 打印并记录 token 作为可能的 Authorization 值
-            console.log('Captured token for Authorization:', token);
-            $.log(`Token 获取成功🎉, Token: ${token}`);
-            $.msg('Token 获取成功🎉', `${token}`);
-        }
+  // 检查请求的URL是否为我们关注的URL
+  if ($request.url === 'https://app.jxgdw.com/api/advert/sign') {
+    // 从请求头中获取Authorization值
+    let authValue = $request.headers['Authorization'];
+    
+    // 检查authValue是否存在
+    if (authValue) {
+      // 日志打印Authorization值
+      console.log(`Authorization值获取成功🎉, Authorization: ${authValue}`);
+      // 也可以根据需要将值发送为通知，下面是示例语法
+      // $.msg('Authorization值获取成功🎉', `${authValue}`);
+    } else {
+      console.log('Authorization值未找到');
     }
+  }
 }
-
-// 调用函数
-getAuthHeader();
