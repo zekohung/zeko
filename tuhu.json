@@ -1,0 +1,22 @@
+{
+  "name": "途虎养车签到脚本订阅",
+  "script": "https://raw.githubusercontent.com/Crazy-Z7/Task/main/Tuhyche.js",
+  "description": "自动签到途虎养车获取积分。",
+  "tags": ["途虎养车", "签到", "积分"],
+  "env": "surge, loon, quantumultx, node",
+  "author": "Zoo",
+  "authorLink": "https://github.com/Crazy-Z7",
+  "updateTime": "2024-02-19T00:00:00Z",
+  "settings": [
+    {
+      "name": "KEY_sign",
+      "val": "tuhuvx",
+      "type": "text"
+    },
+    {
+      "name": "signKeyTU",
+      "val": "TU_usersignKeyTU",
+      "type": "text"
+    }
+  ]
+}
