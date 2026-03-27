@@ -1,4 +1,5 @@
 function GetAuthorization(response) {
+    
     // 从响应头或响应体中提取 Authorization
     if (response && response.headers) {
         const authHeader = response.headers['Authorization'] || response.headers['Authorization'];
