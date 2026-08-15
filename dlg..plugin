@@ -1,0 +1,12 @@
+#!name=Duolingo去广告
+#!enabled=true
+#!description=去除Duolingo广告
+#!author=Custom
+#!version=1.0.0
+
+[Rule]
+DOMAIN-SUFFIX,duolingo.cn,REJECT
+DOMAIN-SUFFIX,duolingo.com,REJECT
+DOMAIN-SUFFIX,ads-api.duolingo.com,REJECT
+DOMAIN-SUFFIX,analytics.vpc.duolingo.com,REJECT
+DOMAIN-SUFFIX,metrics.duolingo.com,REJECT
