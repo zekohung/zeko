@@ -1,0 +1,38 @@
+#!name=今日水印相机 去开屏广告(基础版)
+#!desc=阻断 App 内已集成的第三方广告联盟请求，使开屏(广告位1001)无填充、不再展示。纯域名拦截，无需 MITM 证书。
+#!system=ios
+# ⚠ 已被「今日水印相机-去开屏广告-抓包版.plugin」取代：本版凭静态分析猜测，
+#   实测漏掉真实开屏域名 ad.xhey.top（抓包 HAR #17），对本次开屏无效。保留作对照，勿同时启用。
+
+[Rule]
+# ── 穿山甲 / Pangle / GroMore（字节） ──
+# 证据：CSJAdSDK.bundle、TTSDK*.framework、csj* 符号、CSJSplashAd 相关类
+DOMAIN-KEYWORD,pangolin-sdk-toutiao,REJECT
+DOMAIN-KEYWORD,pglstatp-toutiao,REJECT
+DOMAIN-SUFFIX,zijieapi.com,REJECT
+# 广告素材 CDN（可选，会一并拦掉字节图片 CDN 的广告素材）
+# DOMAIN-SUFFIX,douyinpic.com,REJECT
+
+# ── 优量汇 GDT（腾讯） ──
+# 证据：Frameworks/GDTMobSDK.framework、GDTSplashAd 类
+DOMAIN-SUFFIX,gdt.qq.com,REJECT
+DOMAIN-SUFFIX,e.qq.com,REJECT
+DOMAIN-SUFFIX,pgdt.gtimg.com,REJECT
+DOMAIN-SUFFIX,pgdt.gtimg.cn,REJECT
+
+# ── 快手联盟 ──
+# 证据：Frameworks/KSAdSDK.framework、KSSplashAdView 类
+DOMAIN-SUFFIX,kuaishouzt.com,REJECT
+DOMAIN-SUFFIX,kwaicdn.com,REJECT
+# DOMAIN-SUFFIX,gifshow.com,REJECT
+
+# ── 百度联盟 ──
+# 证据：baidumobadsdk.bundle、MSAdSDK.bundle
+DOMAIN-SUFFIX,mobads.baidu.com,REJECT
+DOMAIN-SUFFIX,mobads-logs.baidu.com,REJECT
+DOMAIN-SUFFIX,cpro.baidu.com,REJECT
+
+# ── 说明 ──
+# MSAdSDK / SmartdigimktSDK(SDMSplashAd) 的文件名确认为广告 SDK，
+# 但其服务端域名在加密二进制中不可读，未凭空猜测写入本文件；
+# 若基础版仍有开屏，请改用「进阶版」插件抓取真实请求。
