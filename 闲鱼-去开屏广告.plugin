@@ -1,0 +1,73 @@
+#!name=闲鱼 去开屏广告
+#!desc=依据 2026-10-25 真机 Loon 抓包(HAR 73 条)编写：拦截阿里妈妈(Tanx)开屏广告的上报/投放域、开屏素材 CDN，并可选精确掐断闲鱼广告场景接口(mtop.idle.idleadv)。纯域名规则部分不需要 MitM。
+#!author=PI-Desktop
+#!category=去广告
+#!system=ios
+
+[Rule]
+# ════════════════════════════════════════════════════════════
+# A. 阿里妈妈(Tanx) 广告域 —— 本次抓包实证
+# ════════════════════════════════════════════════════════════
+# 证据：本次开屏是阿里妈妈投放，广告位 pid=mm_10982364_2444700315_111662350100
+#   · HAR #51  GET https://bdlog.tanx.com/imp?pb=…&pid=mm_10982364_2444700315_111662350100
+#              &mmAdArgs=G_101^6005_83474399627_…_937208763__        ← 曝光上报
+#   · HAR #39  GET https://bdlog.tanx.com/clk_asyn?pb=…               ← 点击上报
+#   · HAR #38  GET http://rdstat.tanx.com/trd?p=mm_10982364_…&aid=80220378295843453&et=…
+#              et 是 0x02 分隔的埋点串，解码含：com.taobao.fleamarket / 111662350100 / 937208763
+#              （111662350100 与 pid 尾号一致，937208763 与 imp 的 mmAdArgs 一致 → 同一次投放）
+#   · HAR #50  GET https://ipm.atm.youku.com/ipm?pb=…&k=184         ← 阿里妈妈曝光监测(yk atm)
+DOMAIN-SUFFIX,tanx.com,REJECT
+DOMAIN-SUFFIX,ipm.atm.youku.com,REJECT
+# 阿里妈妈主域（广告投放/素材/结算），本次未直接出现，作兜底
+DOMAIN-SUFFIX,alimama.com,REJECT
+# 阿里系 App 广告请求域（业界通用端点，本次未出现；若不放心可注释）
+DOMAIN-SUFFIX,adash.m.taobao.com,REJECT
+DOMAIN-SUFFIX,adashx.m.taobao.com,REJECT
+
+# ════════════════════════════════════════════════════════════
+# B. 开屏素材 CDN —— 本次抓包实证（默认开，有副作用，见下）
+# ════════════════════════════════════════════════════════════
+# 证据：HAR #37  启动瞬间(11:38:36)拉取的 462KB 视频，UA 为 WKWebView 风格
+#   GET https://a1.alibabausercontent.com/prod/feupload/user/7clgu/e22c6ae0-….mp4
+#   → 开屏没有素材就放不出来。这是本次抓包里唯一能实际阻断开屏内容的一层。
+# 副作用：该域是阿里「用户上传内容」OSS/CDN，开启期间外链图片/视频可能加载失败。
+#   若发现商品图、评价视频打不开，把下面两行注释掉，改用 C 段（需要证书）。
+DOMAIN-SUFFIX,alibabausercontent.com,REJECT
+
+# ════════════════════════════════════════════════════════════
+# C. 可选：精确掐断闲鱼广告场景接口（需要 MitM + 脚本）
+#    只影响 mtop.idle.idleadv.*，不动其它 mtop 业务接口
+# ════════════════════════════════════════════════════════════
+# 证据：HAR #65  POST https://acs.m.goofish.com/gw/mtop.idle.idleadv.scene.restore/1.0
+#        请求：restoreStage=appLaunch、fishAdCode=350430（冷启动即调用）
+#        响应：{"api":"mtop.idle.idleadv.scene.restore",
+#               "data":{"trackParams":{"stageMatch":"true"}},"ret":["SUCCESS::调用成功"],"v":"1.0"}
+#   → stageMatch=true 表示「广告场景命中」，脚本把它改成 false 并清空广告载荷。
+# 用法：把 xianyu-noad.js 放到 Loon 脚本目录，取消下面三行注释，并信任 MitM 证书。
+# 风险：阿里 MTOP 网关若做证书校验，开 MitM 后闲鱼可能提示网络异常 → 立即停用 C 段。
+# [Script]
+# http-response ^https?://acs\.m\.goofish\.com/gw/mtop\.idle\.idleadv\. script-path=xianyu-noad.js,requires-body=true,tag=闲鱼-清空广告场景
+# [mitm]
+# hostname = %APPEND% acs.m.goofish.com
+
+# ════════════════════════════════════════════════════════════
+# D. 可选：App 内弹窗广告框架（不是开屏，需要时放开）
+# ════════════════════════════════════════════════════════════
+# 证据：HAR #22 GET https://poplayer.template.alibaba.com/popcdn/2/config.json (304)
+# → 阿里 poplayer 是弹层/浮层广告模板，拦掉后 App 内弹窗类广告没模板可渲染
+# DOMAIN-SUFFIX,poplayer.template.alibaba.com,REJECT
+
+# ════════════════════════════════════════════════════════════
+# E. 明确不要拦（本次抓包里出现过的业务域名）
+# ════════════════════════════════════════════════════════════
+# acs.m.goofish.com        闲鱼 mtop 主网关（user.init / rule.config 等业务全在这）
+# amdc.m.taobao.com、59.82.* 阿里 MDC 配置下发（域名/开关）
+# tiga-release-dc.m.taobao.com  阿里 Tiga 配置
+# acs.m.taobao.com、guide-acs.m.taobao.com  mtop 时间戳与业务网关
+# gw.alicdn.com / gw.alipayobjects.com  支付宝与阿里静态资源
+# mdap/loggw.alipay.com、loggw-ex.alipay.com  支付宝日志
+# umdc/mum.alibabachengdun.com  阿里风控
+# alivc-aio / cloud-config-service.rtc / vod.cn-shanghai.aliyuncs.com  阿里云播放器
+# abtest.alibaba.com  阿里 A/B
+# minorshort.weixin.qq.com  微信隧道
+# dualstack-logs.amap.com  高德定位
