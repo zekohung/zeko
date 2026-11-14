@@ -8,9 +8,9 @@ var XCameraVipRewrite = (function () {
   'use strict';
   var KEY_TEXT = 'xhey-cc4275fd-43';
   var DEFAULT_EXPIRES = Math.floor(Date.UTC(2099, 11, 31, 23, 59, 59) / 1000);
-  // HAR verified H5 route; native binary constructs the relative route app/vip/info.
-  // Optional next/ is compatibility matching, not a captured native URL assertion.
-  var TARGET = /^https:\/\/today\.xhey\.top(?::443)?\/(?:next\/)?app\/(?:h5\/)?vip\/info\/?(?:\?[^#]*)?$/i;
+  // 实测域名为 today-ha.xhey.top（xhey.top 下还有 today / today-hb 等多集群域名）。
+  // 路径放宽为任意前缀 + vip/info；脚本仍用 patchMembership 校验是否为成功会员结构。
+  var TARGET = /^https:\/\/[a-z0-9.-]*xhey\.top(?::\d{1,5})?\/[^?#]*vip\/info\/?(?:\?[^#]*)?$/i;
   var B64 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
   var sbox = [], inverseSbox = [], roundKeys;
 
