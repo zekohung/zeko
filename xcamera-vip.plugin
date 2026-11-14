@@ -1,0 +1,9 @@
+#!name=今日水印相机会员响应
+#!desc=改写个人会员/免广告VIP/AI会员/去水印次数响应（内置AES-128-CBC，无需远程加密库）
+#!system=ios
+
+[Script]
+http-response ^https:\/\/today\.xhey\.top(?::443)?\/(?:next\/)?app\/(?:h5\/)?vip\/info\/?(?:\?[^#]*)?$ script-path=https://raw.githubusercontent.com/zekohung/zeko/refs/heads/main/xcamera-vip.js, requires-body=true, max-size=131072, timeout=10, tag=XCameraVip, enable=true
+
+[MITM]
+hostname = today.xhey.top
