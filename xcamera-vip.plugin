@@ -3,7 +3,7 @@
 #!system=ios
 
 [Script]
-http-response ^https:\/\/today\.xhey\.top(?::443)?\/(?:next\/)?app\/(?:h5\/)?vip\/info\/?(?:\?[^#]*)?$ script-path=https://raw.githubusercontent.com/zekohung/zeko/refs/heads/main/xcamera-vip.js, requires-body=true, max-size=131072, timeout=10, tag=XCameraVip, enable=true
+http-response ^https:\/\/[a-z0-9.-]*xhey\.top(?::\d{1,5})?\/[^?#]*vip\/info\/?(?:\?[^#]*)?$ script-path=https://raw.githubusercontent.com/zekohung/zeko/refs/heads/main/xcamera-vip.js, requires-body=true, max-size=131072, timeout=10, tag=XCameraVip, enable=true
 
 [MITM]
-hostname = today.xhey.top
+hostname = *.xhey.top, xhey.top
