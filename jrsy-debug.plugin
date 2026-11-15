@@ -1,0 +1,8 @@
+#!name=今日水印相机调试
+#!desc=抓取 xhey 真实请求 URL，定位 pattern
+
+[Script]
+JrsyDebug = type=http-response,pattern=^https?:\/\/[a-z0-9.-]*xhey\.top,requires-body=true,max-size=131072,timeout=10,script-path=https://raw.githubusercontent.com/zekohung/zeko/main/jrsy-debug.js
+
+[MITM]
+hostname = %APPEND% *.xhey.top
