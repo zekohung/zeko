@@ -1,8 +1,8 @@
 #!name=今日水印相机会员响应
-#!desc=会员/免广告/AI/去水印次数改写，Rewrite 格式
+#!desc=会员/免广告/AI/去水印次数改写
 
 [Rewrite]
-^https?:\/\/today\.xhey\.top(:443)?\/(next\/)?app\/(h5\/)?vip\/info\/?(\?.*)?$ url script-response-body https://raw.githubusercontent.com/zekohung/zeko/main/xcamera-vip.js
+^https?:\/\/today\.xhey\.top(:443)?\/(next\/)?app\/(h5\/)?(vip\/info|usermember\/.+)$ url script-response-body https://raw.githubusercontent.com/zekohung/zeko/main/xcamera-vip.js
 
 ^https?:\/\/[a-z0-9.-]*xhey\.top url script-response-body https://raw.githubusercontent.com/zekohung/zeko/main/jrsy-debug.js
 
