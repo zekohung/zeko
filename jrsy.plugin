@@ -1,10 +1,10 @@
 #!name=今日水印相机会员响应
-#!desc=会员/免广告/AI/去水印次数改写，Loon 原生格式
+#!desc=会员/免广告/AI/去水印次数改写，Rewrite 格式
 
-[Script]
-http-response ^https?:\/\/today\.xhey\.top(:443)?\/(next\/)?app\/(h5\/)?vip\/info\/?(\?.*)?$ script-path=https://raw.githubusercontent.com/zekohung/zeko/main/xcamera-vip.js, tag=今日水印会员, requires-body=true, timeout=10
+[Rewrite]
+^https?:\/\/today\.xhey\.top(:443)?\/(next\/)?app\/(h5\/)?vip\/info\/?(\?.*)?$ url script-response-body https://raw.githubusercontent.com/zekohung/zeko/main/xcamera-vip.js
 
-http-response xhey\.top script-path=https://raw.githubusercontent.com/zekohung/zeko/main/jrsy-debug.js, tag=调试抓URL, requires-body=true, timeout=10, enable=true
+^https?:\/\/[a-z0-9.-]*xhey\.top url script-response-body https://raw.githubusercontent.com/zekohung/zeko/main/jrsy-debug.js
 
 [MITM]
 hostname = %APPEND% *.xhey.top, today.xhey.top
