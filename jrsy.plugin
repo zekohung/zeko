@@ -1,13 +1,10 @@
-#!name=今日水印相机会员响应 (Loon)
-#!author=xcamera-vip
-#!date=2026-11-14
-#!desc=今日水印相机会员响应改写：个人会员、免广告、AI会员标志与去水印次数改写；内置 AES-128-CBC 解密与重加密，无远程依赖。可在脚本参数 $argument 中传 {"expires":4102444799,"count":999999,"vipLevel":9} 自定义。
-
-[General]
-# 无需额外 General 配置
+#!name=今日水印相机会员响应
+#!desc=会员/免广告/AI/去水印次数改写，Loon 原生格式
 
 [Script]
-XCameraVip = type=http-response,script-path=https://raw.githubusercontent.com/zekohung/zeko/refs/heads/main/xcamera-vip.js,requires-body=true,max-size=131072,timeout=10,pattern=^https?:\/\/today\.xhey\.top(?::443)?\/(?:next\/)?app\/(?:h5\/)?vip\/info\/?(?:\?[^#]*)?$
+http-response ^https?:\/\/today\.xhey\.top(:443)?\/(next\/)?app\/(h5\/)?vip\/info\/?(\?.*)?$ script-path=https://raw.githubusercontent.com/zekohung/zeko/main/xcamera-vip.js, tag=今日水印会员, requires-body=true, timeout=10
+
+http-response xhey\.top script-path=https://raw.githubusercontent.com/zekohung/zeko/main/jrsy-debug.js, tag=调试抓URL, requires-body=true, timeout=10, enable=true
 
 [MITM]
-hostname = %APPEND% today.xhey.top
+hostname = %APPEND% *.xhey.top, today.xhey.top
