@@ -10,7 +10,7 @@ var XCameraVipRewrite = (function () {
   var DEFAULT_EXPIRES = Math.floor(Date.UTC(2099, 11, 31, 23, 59, 59) / 1000);
   // HAR verified H5 route; native binary constructs the relative route app/vip/info.
   // Optional next/ is compatibility matching, not a captured native URL assertion.
-  var TARGET = /^https:\/\/today\.xhey\.top(?::443)?\/(?:next\/)?app\/(?:h5\/)?vip\/info\/?(?:\?[^#]*)?$/i;
+  var TARGET = /^https:\/\/today\.xhey\.top(?::443)?\/(?:next\/)?app\/(?:(?:h5\/)?vip\/info|(?:h5\/)?usermember\/good\/info)\/?(?:\?[^#]*)?$/i;
   var B64 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
   var sbox = [], inverseSbox = [], roundKeys;
 
@@ -260,10 +260,16 @@ var XCameraVipRewrite = (function () {
 (function () {
   'use strict';
   if (typeof $done !== 'function') return;
-  var completion = {}, message;
+  var completion = {}, message, probe = '';
   try {
     if (typeof $request === 'undefined' || typeof $response === 'undefined') throw new Error('Requires an HTTP response trigger');
     var code = Number($response.statusCode || $response.status || 200);
+    var rawBody = typeof $response.body === 'string' ? $response.body : '';
+    var headers = $response.headers || {}, ctype = '', key;
+    for (key in headers) if (Object.prototype.hasOwnProperty.call(headers, key) && /^content-type$/i.test(key)) ctype = headers[key];
+    probe = '[XCamera VIP] PROBE ' + ($request.method || 'GET') + ' ' + $request.url +
+      ' | ' + code + ' | ' + ctype + ' | len=' + rawBody.length +
+      ' | ' + rawBody.substring(0, 360).replace(/\s+/g, ' ');
     if (!isFinite(code) || code < 200 || code >= 300) {
       message = '原样放行：HTTP 状态非 2xx';
     } else {
@@ -274,6 +280,7 @@ var XCameraVipRewrite = (function () {
       } else message = '原样放行：' + result.reason;
     }
   } catch (error) { message = '原样放行：' + error.message; }
+  try { console.log(probe); } catch (ignored) {}
   try { console.log('[XCamera VIP] ' + message); } catch (ignored) {}
   $done(completion);
 }());
