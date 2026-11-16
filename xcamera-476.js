@@ -191,36 +191,54 @@ var XCameraVipRewrite = (function () {
     }
     return result;
   }
+  function isFlag(value) {
+    return typeof value === 'boolean' || value === 0 || value === 1 ||
+      value === '0' || value === '1' || value === 'true' || value === 'false';
+  }
+  function setFlag(container, key) {
+    var value = container[key];
+    if (typeof value === 'boolean') container[key] = true;
+    else if (typeof value === 'number') container[key] = 1;
+    else if (value === 'true' || value === 'false') container[key] = 'true';
+    else container[key] = '1';
+  }
   function expiryValue(original, seconds) {
     // Preserve a nonzero observed millisecond representation; zero defaults to seconds.
     return Number(original) >= 100000000000 ? seconds * 1000 : seconds;
   }
   function patchMembership(object, config) {
     if (!object || typeof object !== 'object' || Array.isArray(object)) return false;
-    if (object.code !== undefined && object.code !== 200 && object.code !== 0) return false;
+    if (object.code !== undefined && object.code !== '' &&
+        Number(object.code) !== 200 && Number(object.code) !== 0) return false;
     var data = object.data;
     if (!data || typeof data !== 'object' || Array.isArray(data)) return false;
-    if (data.status !== undefined && data.status !== 0) return false;
-    // Refuse to create a member object from an unrelated/error response.
-    if (typeof data.isVip !== 'boolean' && typeof data.isAdFreeVip !== 'boolean' &&
-        !(data.aiVip && typeof data.aiVip.isAiVip === 'boolean')) return false;
-    if (typeof data.isVip === 'boolean') {
-      data.isVip = true;
+    if (data.status !== undefined && data.status !== '' && Number(data.status) !== 0) return false;
+    // 至少命中一个会员标志才改写，避免把失败或无关响应改成成功。
+    if (!isFlag(data.isVip) && !isFlag(data.isAdFreeVip) &&
+        !(data.aiVip && isFlag(data.aiVip.isAiVip))) return false;
+    if (isFlag(data.isVip)) {
+      setFlag(data, 'isVip');
       if ('vipExpireTime' in data) data.vipExpireTime = expiryValue(data.vipExpireTime, config.expires);
     }
-    if (typeof data.isAdFreeVip === 'boolean') {
-      data.isAdFreeVip = true;
+    if (isFlag(data.isAdFreeVip)) {
+      setFlag(data, 'isAdFreeVip');
       if ('adFreeVipExpireTime' in data) data.adFreeVipExpireTime = expiryValue(data.adFreeVipExpireTime, config.expires);
     }
-    if (typeof data.removeWatermarkCounts === 'number') data.removeWatermarkCounts = config.count;
-    if (config.vipLevel !== null && typeof data.vipLevel === 'number') data.vipLevel = config.vipLevel;
-    if (data.aiVip && typeof data.aiVip.isAiVip === 'boolean') {
-      data.aiVip.isAiVip = true;
+    if ('removeWatermarkCounts' in data && data.removeWatermarkCounts !== '' &&
+        !isNaN(Number(data.removeWatermarkCounts))) {
+      data.removeWatermarkCounts = typeof data.removeWatermarkCounts === 'string' ? String(config.count) : config.count;
+    }
+    if (config.vipLevel !== null && 'vipLevel' in data && data.vipLevel !== '' &&
+        !isNaN(Number(data.vipLevel))) {
+      data.vipLevel = typeof data.vipLevel === 'string' ? String(config.vipLevel) : config.vipLevel;
+    }
+    if (data.aiVip && isFlag(data.aiVip.isAiVip)) {
+      setFlag(data.aiVip, 'isAiVip');
       if ('aiVipExpireTime' in data.aiVip) data.aiVip.aiVipExpireTime = expiryValue(data.aiVip.aiVipExpireTime, config.expires);
     }
     if (Array.isArray(data.vips)) data.vips.forEach(function (vip) {
-      if (!vip || typeof vip !== 'object' || typeof vip.isVip !== 'boolean') return;
-      vip.isVip = true;
+      if (!vip || typeof vip !== 'object' || !isFlag(vip.isVip)) return;
+      setFlag(vip, 'isVip');
       if ('expireTime' in vip) vip.expireTime = expiryValue(vip.expireTime, config.expires);
     });
     return true;
@@ -274,6 +292,19 @@ var XCameraVipRewrite = (function () {
       } else message = '原样放行：' + result.reason;
     }
   } catch (error) { message = '原样放行：' + error.message; }
+  try {
+    if (message && message.indexOf('not a successful member response') !== -1 && typeof $response !== 'undefined') {
+      var rawBody = typeof $response.body === 'string' ? $response.body : '';
+      var scan = rawBody;
+      try {
+        var env = JSON.parse(rawBody);
+        if (env && typeof env.result === 'string') scan = JSON.stringify(XCameraVipRewrite.decodeResult(env.result).object);
+      } catch (ignoreDecode) {}
+      var hits = [], fieldRe = /"([A-Za-z0-9_]*(?:vip|member|expire|adfree|watermark)[A-Za-z0-9_]*)"\s*:\s*("(?:[^"\\]|\\.){0,40}"|-?\d{1,15}|true|false|null)/gi, fm;
+      while ((fm = fieldRe.exec(scan)) !== null && hits.length < 30) hits.push(fm[1] + '=' + fm[2]);
+      message += ' || FIELDS(' + hits.length + ') ' + hits.join(' ; ');
+    }
+  } catch (ignoreDiag) {}
   try { console.log('[XCamera VIP] ' + message); } catch (ignored) {}
   $done(completion);
 }());
