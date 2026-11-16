@@ -10,7 +10,7 @@ var XCameraVipRewrite = (function () {
   var DEFAULT_EXPIRES = Math.floor(Date.UTC(2099, 11, 31, 23, 59, 59) / 1000);
   // HAR verified H5 route; native binary constructs the relative route app/vip/info.
   // Optional next/ is compatibility matching, not a captured native URL assertion.
-  var TARGET = /^https:\/\/today\.xhey\.top(?::443)?\/(?:next\/)?app\/(?:(?:h5\/)?vip\/info|(?:h5\/)?usermember\/good\/info)\/?(?:\?[^#]*)?$/i;
+  var TARGET = /^https:\/\/today\.xhey\.top(?::443)?\/(?:next\/)?app\/(?:h5\/)?vip\/info\/?(?:\?[^#]*)?$/i;
   var B64 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
   var sbox = [], inverseSbox = [], roundKeys;
 
@@ -260,35 +260,10 @@ var XCameraVipRewrite = (function () {
 (function () {
   'use strict';
   if (typeof $done !== 'function') return;
-  var completion = {}, message, probe = '';
+  var completion = {}, message;
   try {
     if (typeof $request === 'undefined' || typeof $response === 'undefined') throw new Error('Requires an HTTP response trigger');
     var code = Number($response.statusCode || $response.status || 200);
-    var rawBody = typeof $response.body === 'string' ? $response.body : '';
-    var headers = $response.headers || {}, ctype = '', key;
-    for (key in headers) if (Object.prototype.hasOwnProperty.call(headers, key) && /^content-type$/i.test(key)) ctype = headers[key];
-    probe = '[XCamera VIP] PROBE ' + ($request.method || 'GET') + ' ' + $request.url +
-      ' | ' + code + ' | ' + ctype + ' | len=' + rawBody.length +
-      ' | ' + rawBody.substring(0, 360).replace(/\s+/g, ' ');
-    var scanText = '';
-    try {
-      if (rawBody && rawBody.indexOf('"result"') !== -1) {
-        var envelope = JSON.parse(rawBody);
-        if (envelope && typeof envelope.result === 'string') {
-          var inner = XCameraVipRewrite.decodeResult(envelope.result);
-          scanText = JSON.stringify(inner.object);
-          probe += ' || AES' + (inner.innerBase64 ? '+B64' : '');
-        }
-      } else if (rawBody && rawBody.indexOf('__NEXT_DATA__') !== -1) {
-        scanText = rawBody;
-        probe += ' || NEXT_DATA';
-      }
-    } catch (decodeError) { probe += ' || DECODE_ERR ' + decodeError.message; }
-    if (scanText) {
-      var hits = [], fieldRe = /"([A-Za-z0-9_]*(?:vip|member|expire|adfree|watermark)[A-Za-z0-9_]*)"\s*:\s*("(?:[^"\\]|\\.){0,40}"|-?\d{1,15}|true|false|null)/gi, mm;
-      while ((mm = fieldRe.exec(scanText)) !== null && hits.length < 40) hits.push(mm[1] + '=' + mm[2]);
-      probe += ' || FIELDS(' + hits.length + ') ' + hits.join(' ; ');
-    }
     if (!isFinite(code) || code < 200 || code >= 300) {
       message = '原样放行：HTTP 状态非 2xx';
     } else {
@@ -299,8 +274,6 @@ var XCameraVipRewrite = (function () {
       } else message = '原样放行：' + result.reason;
     }
   } catch (error) { message = '原样放行：' + error.message; }
-  try { console.log(probe); } catch (ignored) {}
   try { console.log('[XCamera VIP] ' + message); } catch (ignored) {}
   $done(completion);
 }());
-
