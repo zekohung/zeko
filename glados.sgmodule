@@ -4,7 +4,7 @@
 
 [Script]
 # 定时签到：每天 07:10（cronexp 用双引号；wakeup=true 让锁屏时也能唤醒）
-glados_checkin = type=cron,cronexp="10 7 * * *",wakeup=true,timeout=120,script-path=https://raw.githubusercontent.com/zekohung/zeko/main/glados.js
+glados_checkin = type=cron,cronexp="46 7,23 * * *",wakeup=true,timeout=120,script-path=https://raw.githubusercontent.com/zekohung/zeko/main/glados.js
 
 # 抓包保存 Cookie：pattern 不带 $ 结尾，带 ?t=任意数字 的强制刷新同样触发
 # 清库触发：浏览器打开 https://glados.network/console/__GLaDOS_RESET__ 抹掉全部旧 Cookie
