@@ -270,6 +270,16 @@ var XCameraVipRewrite = (function () {
     probe = '[XCamera VIP] PROBE ' + ($request.method || 'GET') + ' ' + $request.url +
       ' | ' + code + ' | ' + ctype + ' | len=' + rawBody.length +
       ' | ' + rawBody.substring(0, 360).replace(/\s+/g, ' ');
+    if (rawBody && rawBody.indexOf('"result"') !== -1) {
+      try {
+        var envelope = JSON.parse(rawBody);
+        if (envelope && typeof envelope.result === 'string') {
+          var inner = XCameraVipRewrite.decodeResult(envelope.result);
+          probe += ' || DECODED' + (inner.innerBase64 ? '-B64' : '') + ' ' +
+            JSON.stringify(inner.object).substring(0, 1200).replace(/\s+/g, ' ');
+        }
+      } catch (decodeError) { probe += ' || DECODE_ERR ' + decodeError.message; }
+    }
     if (!isFinite(code) || code < 200 || code >= 300) {
       message = '原样放行：HTTP 状态非 2xx';
     } else {
@@ -284,3 +294,4 @@ var XCameraVipRewrite = (function () {
   try { console.log('[XCamera VIP] ' + message); } catch (ignored) {}
   $done(completion);
 }());
+
