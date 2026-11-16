@@ -260,6 +260,29 @@ var XCameraVipRewrite = (function () {
 (function () {
   'use strict';
   if (typeof $done !== 'function') return;
+  function summarize(node, prefix, depth, out, budget) {
+    if (!node || typeof node !== 'object' || depth > 4 || out.length >= budget) return;
+    var tag = Object.prototype.toString.call(node), keys = [], k, v, i;
+    if (tag === '[object Array]') {
+      out.push(prefix + '[](' + node.length + ')');
+      if (node.length && typeof node[0] === 'object') summarize(node[0], prefix + '[0].', depth + 1, out, budget);
+      return;
+    }
+    for (k in node) if (Object.prototype.hasOwnProperty.call(node, k)) keys.push(k);
+    for (i = 0; i < keys.length && out.length < budget; i++) {
+      k = keys[i]; v = node[k];
+      tag = Object.prototype.toString.call(v);
+      if (tag === '[object Object]') summarize(v, prefix + k + '.', depth + 1, out, budget);
+      else if (tag === '[object Array]') {
+        out.push(prefix + k + '[](' + v.length + ')');
+        if (v.length && typeof v[0] === 'object') summarize(v[0], prefix + k + '[0].', depth + 1, out, budget);
+      } else if (/vip|member|expire|adfree|watermark|remove|level|status|count/i.test(k)) {
+        out.push(prefix + k + '=' + JSON.stringify(v).substring(0, 60));
+      } else if (typeof v === 'string' && v.charAt(0) === '{') {
+        try { summarize(JSON.parse(v), prefix + k + '.', depth + 1, out, budget); } catch (e) { out.push(prefix + k + '=str' + v.length); }
+      }
+    }
+  }
   var completion = {}, message, probe = '';
   try {
     if (typeof $request === 'undefined' || typeof $response === 'undefined') throw new Error('Requires an HTTP response trigger');
@@ -270,15 +293,24 @@ var XCameraVipRewrite = (function () {
     probe = '[XCamera VIP] PROBE ' + ($request.method || 'GET') + ' ' + $request.url +
       ' | ' + code + ' | ' + ctype + ' | len=' + rawBody.length +
       ' | ' + rawBody.substring(0, 360).replace(/\s+/g, ' ');
-    if (rawBody && rawBody.indexOf('"result"') !== -1) {
-      try {
+    var schemaTarget = null;
+    try {
+      if (rawBody && rawBody.indexOf('"result"') !== -1) {
         var envelope = JSON.parse(rawBody);
         if (envelope && typeof envelope.result === 'string') {
           var inner = XCameraVipRewrite.decodeResult(envelope.result);
-          probe += ' || DECODED' + (inner.innerBase64 ? '-B64' : '') + ' ' +
-            JSON.stringify(inner.object).substring(0, 1200).replace(/\s+/g, ' ');
+          schemaTarget = inner.object;
+          probe += ' || AES' + (inner.innerBase64 ? '+B64' : '');
         }
-      } catch (decodeError) { probe += ' || DECODE_ERR ' + decodeError.message; }
+      } else if (rawBody && rawBody.indexOf('__NEXT_DATA__') !== -1) {
+        var nextMatch = rawBody.match(/<script id="__NEXT_DATA__"[^>]*>([\s\S]*?)<\/script>/);
+        if (nextMatch) { schemaTarget = JSON.parse(nextMatch[1]); probe += ' || NEXT_DATA'; }
+      }
+    } catch (decodeError) { probe += ' || DECODE_ERR ' + decodeError.message; }
+    if (schemaTarget) {
+      var acc = [];
+      summarize(schemaTarget, '', 0, acc, 70);
+      probe += ' || SCHEMA ' + acc.join(' ; ');
     }
     if (!isFinite(code) || code < 200 || code >= 300) {
       message = '原样放行：HTTP 状态非 2xx';
