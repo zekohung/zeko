@@ -1,0 +1,477 @@
+/******************************
+脚本功能：GLaDOS / Railgun 自动签到 + 积分查询（多账号版）
+Version  : v1.4.0 (Shadowrocket 适配版 / 兑换已禁用)
+更新时间：2026-05-31
+作者：Curtinp118
+Platform : Quantumult X / Loon / Surge / Shadowrocket(小火箭)
+
+使用说明：
+访问 GLaDOS 任意域名的 /console/account 页面抓包保存 Cookie，定时任务自动签到。
+支持 glados.network、railgun.info、glados.vip、glados.one、glados.space，各域名支持多账号。
+
+----- Loon -----
+[rewrite_local]
+^https://glados\.network/console/account$ url script-request-header https://raw.githubusercontent.com/zekohung/zeko/main/glados.js
+[task_local]
+10 7 * * * https://raw.githubusercontent.com/zekohung/zeko/main/glados.js, tag=GLaDOS 签到, enabled=true
+[MITM]
+hostname = %APPEND% glados.network, railgun.info, glados.vip, glados.one, glados.space
+
+----- Shadowrocket(小火箭) -----
+[Script]
+glados_checkin = type=cron,cronexp="10 7 * * *",wakeup=true,timeout=120,script-path=https://raw.githubusercontent.com/zekohung/zeko/main/glados.js
+glados_cookie = type=http-request,pattern=^https:\/\/glados\.network\/console\/account$,script-path=https://raw.githubusercontent.com/zekohung/zeko/main/glados.js
+[MITM]
+hostname = %APPEND% glados.network, railgun.info, glados.vip, glados.one, glados.space
+
+----- 小火箭适配改动点(相对 v1.3.0) -----
+1. setTimeout 在小火箭运行环境不存在，原代码定时分支会直接抛 ReferenceError 中断；改为有则延时、无则立即执行。
+2. 新增 isShadowrocket 判定（小火箭有 $httpClient/$persistentStore/$notification，无 $task/$loon）。
+3. $persistentStore 缺失时用内存对象兜底，抓包/签到不再因 store 报错。
+4. padStart 换成手写补零，兼容旧 iOS JavaScriptCore。
+5. Host 头缺失时从 URL 提取并去掉端口号。
+*******************************/
+
+// ========== 四端适配层 ==========
+var isQX = typeof $task !== "undefined";
+var isLoon = typeof $loon !== "undefined";
+var envApp = (typeof $environment !== "undefined" && $environment && $environment.app) ? String($environment.app) : "";
+var hasHttpClient = typeof $httpClient !== "undefined";
+var isSurge = !isQX && !isLoon && hasHttpClient && /Surge/i.test(envApp);
+var isShadowrocket = !isQX && !isLoon && !isSurge && hasHttpClient;
+
+var $http = {
+  fetch: function (opts) {
+    if (isQX) return $task.fetch(opts);
+    if (!hasHttpClient) return Promise.reject(new Error("No HTTP client available"));
+    return new Promise(function (resolve, reject) {
+      var method = (opts.method || "GET").toUpperCase();
+      var handler = function (err, resp, data) {
+        if (err) reject(err);
+        else resolve({ statusCode: resp.statusCode, headers: resp.headers, body: data });
+      };
+      if (method === "POST") $httpClient.post(opts, handler);
+      else $httpClient.get(opts, handler);
+    });
+  }
+};
+
+var memStore = {};
+var $store = {
+  read: function (key) {
+    try {
+      if (isQX) return $prefs.valueForKey(key);
+      if (typeof $persistentStore !== "undefined") return $persistentStore.read(key);
+    } catch (e) {}
+    return memStore.hasOwnProperty(key) ? memStore[key] : null;
+  },
+  write: function (val, key) {
+    try {
+      if (isQX) return $prefs.setValueForKey(val, key);
+      if (typeof $persistentStore !== "undefined") return $persistentStore.write(val, key);
+    } catch (e) {}
+    memStore[key] = val;
+    return true;
+  }
+};
+
+var notifyFn = function (t, s, b) {
+  try {
+    if (isQX) { $notify(t, s, b); return; }
+    if (typeof $notification !== "undefined" && $notification.post) { $notification.post(t, s, b); return; }
+  } catch (e) {}
+};
+
+// ========== Logger 模块 ==========
+function pad2(n) { return (n < 10 ? "0" : "") + n; }
+
+var Logger = {
+  scriptStart: function (name, version, platform, requestType) {
+    var now = new Date();
+    var time = now.getFullYear() + "-" + pad2(now.getMonth() + 1) + "-" + pad2(now.getDate()) + " " + pad2(now.getHours()) + ":" + pad2(now.getMinutes()) + ":" + pad2(now.getSeconds());
+    console.log("🚀 Script Start");
+    console.log("Time     : " + time);
+    console.log("Version  : " + version + " | " + platform + " | " + requestType);
+    console.log("Platform : " + platform);
+    console.log("------------------------------------");
+  },
+
+  envCheck: function (cookieValid, tokenStatus) {
+    console.log("📂 Environment");
+    console.log("- Cookie : " + (cookieValid ? "Valid" : "Invalid"));
+    console.log("- Token  : " + tokenStatus);
+    console.log("------------------------------------");
+  },
+
+  accountHeader: function (index, domain) {
+    if (index !== undefined && index !== null) {
+      console.log("👤 Account #" + index + " | " + domain);
+    } else {
+      console.log("👤 Account | " + domain);
+    }
+  },
+
+  field: function (label, value) {
+    var padding = "              ";
+    var key = (label + padding).substring(0, 14);
+    console.log(key + ": " + value);
+  },
+
+  status: function (icon, text) { this.field("Status", icon + " " + text); },
+  points: function (val) { this.field("Points", val); },
+  daysLeft: function (val) { this.field("Days left", val); },
+  balance: function (val) { this.field("Balance", val); },
+  action: function (val) { this.field("Action", val); },
+  message: function (val) { this.field("Message", val); },
+
+  separator: function () { console.log("------------------------------------"); },
+
+  summary: function (total, success, duplicate, failed, result) {
+    console.log("📊 Summary");
+    console.log("Total      : " + total);
+    console.log("Success    : " + success);
+    console.log("Duplicate  : " + duplicate);
+    console.log("Failed     : " + failed);
+    console.log("🎯 Result  : " + result);
+    console.log("End");
+  }
+};
+
+// ========== 工具函数 ==========
+var SCRIPT_NAME = "GLaDOS";
+var SCRIPT_VERSION = "v1.4.0 (Shadowrocket 适配 / 兑换已禁用)";
+var COOKIES_KEY_PREFIX = "GLaDOS_Cookies";
+var DOMAINS_LIST_KEY = "GLaDOS_Domains";
+var UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36";
+var isGetHeader = typeof $request !== "undefined";
+
+function safeJsonParse(str) {
+  try { return JSON.parse(str); } catch (_) { return null; }
+}
+
+function getPlatform() {
+  if (isQX) return "Quantumult X";
+  if (isLoon) return "Loon";
+  if (isSurge) return "Surge";
+  if (isShadowrocket) return "Shadowrocket";
+  return "Unknown";
+}
+
+// 小火箭无 setTimeout：有则随机延时执行，无则立即执行
+function runTask(fn) {
+  var delay = Math.floor(Math.random() * 11);
+  if (typeof setTimeout === "function") {
+    setTimeout(fn, delay * 1000);
+  } else {
+    fn();
+  }
+}
+
+// ========== 存储函数 ==========
+function cookiesKeyFor(domain) {
+  return COOKIES_KEY_PREFIX + ":" + domain;
+}
+
+function getSavedDomains() {
+  try {
+    var raw = $store.read(DOMAINS_LIST_KEY);
+    if (!raw) return [];
+    var list = safeJsonParse(raw) || [];
+    return Array.isArray(list) ? list.filter(Boolean) : [];
+  } catch (e) { return []; }
+}
+
+function addDomain(domain) {
+  try {
+    var list = getSavedDomains();
+    if (list.indexOf(domain) === -1) {
+      list.push(domain);
+      $store.write(JSON.stringify(list), DOMAINS_LIST_KEY);
+    }
+  } catch (e) {}
+}
+
+function getCookiesForDomain(domain) {
+  try {
+    var raw = $store.read(cookiesKeyFor(domain));
+    if (!raw) return [];
+    var list = safeJsonParse(raw);
+    return Array.isArray(list) ? list.filter(Boolean) : [];
+  } catch (e) { return []; }
+}
+
+// 取 koa:sess 会话指纹：同一会话重新登录时 sess 不变，用它认账号，避免每次刷新都堆一条
+function sessIdOf(cookie) {
+  var m = String(cookie || "").match(/koa:sess=([^;]+)/i);
+  return m ? m[1] : "";
+}
+
+function saveCookie(domain, cookie) {
+  try {
+    if (!cookie) return { isNew: false, index: -1, replaced: false };
+    var cookies = getCookiesForDomain(domain);
+
+    // 1) 整串完全相同：直接返回旧位置
+    var existingIdx = cookies.indexOf(cookie);
+    if (existingIdx !== -1) return { isNew: false, index: existingIdx, replaced: false };
+
+    // 2) 同一会话（koa:sess 相同）但其余字段变了：就地覆盖，不新增账号
+    var sid = sessIdOf(cookie);
+    if (sid) {
+      for (var i = 0; i < cookies.length; i++) {
+        if (sessIdOf(cookies[i]) === sid) {
+          cookies[i] = cookie;
+          $store.write(JSON.stringify(cookies), cookiesKeyFor(domain));
+          addDomain(domain);
+          return { isNew: false, index: i, replaced: true };
+        }
+      }
+    }
+
+    // 3) 新会话：追加为新账号
+    cookies.push(cookie);
+    $store.write(JSON.stringify(cookies), cookiesKeyFor(domain));
+    addDomain(domain);
+    return { isNew: true, index: cookies.length - 1, replaced: false };
+  } catch (e) { return { isNew: false, index: -1, replaced: false }; }
+}
+
+// 清库：清掉所有域名下的 Cookie，用于把未登录状态抓到的脏数据一键抹掉
+function resetAllCookies() {
+  var domains = getSavedDomains();
+  for (var i = 0; i < domains.length; i++) {
+    $store.write("", cookiesKeyFor(domains[i]));
+  }
+  $store.write("", DOMAINS_LIST_KEY);
+  return domains.length;
+}
+
+function getHostFromRequest() {
+  var h = ($request && $request.headers) || {};
+  var host = h.Host || h.host || "";
+  if (!host) {
+    var url = ($request && $request.url) || "";
+    var m = url.match(/^https?:\/\/([^/]+)/);
+    host = m ? m[1] : "";
+  }
+  return String(host).split(":")[0];
+}
+
+// ========== 网络请求 ==========
+function request(url, method, cookie, domain, body) {
+  var headers = {
+    "Content-Type": "application/json;charset=UTF-8",
+    "Origin": "https://" + domain,
+    "Referer": "https://" + domain + "/console/current",
+    "User-Agent": UA,
+    "Cookie": cookie
+  };
+  var opts = { url: url, method: method, headers: headers };
+  if (body !== undefined) opts.body = typeof body === "string" ? body : JSON.stringify(body);
+
+  return $http.fetch(opts).then(
+    function (resp) {
+      return { statusCode: resp.statusCode, data: safeJsonParse(resp.body || ""), raw: resp.body || "" };
+    },
+    function (reason) {
+      return { statusCode: 0, data: null, raw: "", error: reason ? String(reason) : "Network error" };
+    }
+  );
+}
+
+// ========== API ==========
+function checkin(cookie, domain) {
+  return request("https://" + domain + "/api/user/checkin", "POST", cookie, domain, { token: domain }).then(function (resp) {
+    if (resp.error) return { status: "签到失败", code: -2, message: resp.error, points: "0" };
+    if (!resp.data) return { status: "签到失败", code: -2, message: resp.raw, points: "0" };
+    var data = resp.data;
+    var code = data.code !== undefined ? data.code : -2;
+    var message = data.message || "";
+    var points = String(data.points !== undefined ? data.points : 0);
+    if (code === 0) return { status: "签到成功", code: 0, message: message, points: points };
+    if (code === 1) return { status: "重复签到", code: 1, message: message, points: "0" };
+    return { status: "签到失败", code: code, message: message, points: "0" };
+  });
+}
+
+function getStatus(cookie, domain) {
+  return request("https://" + domain + "/api/user/status", "GET", cookie, domain).then(function (resp) {
+    if (resp.error || !resp.data) return { leftDays: "N/A", email: "unknown" };
+    var data = resp.data.data || {};
+    var leftDays = data.leftDays;
+    var email = data.email || "unknown";
+    var days = (leftDays !== undefined && leftDays !== null) ? parseInt(parseFloat(leftDays), 10) + " 天" : "N/A";
+    return { leftDays: days, email: email };
+  });
+}
+
+function getPoints(cookie, domain) {
+  return request("https://" + domain + "/api/user/points", "GET", cookie, domain).then(function (resp) {
+    if (resp.error || !resp.data) return { points: "N/A", pointsNum: 0 };
+    var points = resp.data.points;
+    if (points !== undefined && points !== null) {
+      var pointsInt = parseInt(parseFloat(points), 10);
+      return { points: "" + pointsInt, pointsNum: pointsInt };
+    }
+    return { points: "N/A", pointsNum: 0 };
+  });
+}
+
+// ========== 主流程 ==========
+
+// ⚠️ 兑换功能已禁用（以下函数保留但不调用）
+// function exchange(cookie, domain, plan) {
+//   return request("https://" + domain + "/api/user/exchange", "POST", cookie, domain, { planType: plan }).then(function (resp) {
+//     if (resp.error || !resp.data) return "兑换失败";
+//     var code = resp.data.code !== undefined ? resp.data.code : -2;
+//     var message = resp.data.message || "";
+//     if (code === 0) return "兑换成功(" + plan + ")";
+//     return "兑换失败: " + message;
+//   });
+// }
+
+function checkinForAccount(cookie, domain, accountIndex) {
+  var statusBefore, checkinResult, pointsResult, statusAfter, accountEmail;
+
+  return getStatus(cookie, domain).then(function (sb) {
+    statusBefore = sb;
+    accountEmail = sb.email;
+    var displayEmail = accountEmail !== "unknown" ? accountEmail : "Account #" + accountIndex;
+    Logger.accountHeader(accountIndex, domain);
+    Logger.field("Email", displayEmail);
+    return checkin(cookie, domain);
+  }).then(function (cr) {
+    checkinResult = cr;
+    return getPoints(cookie, domain);
+  }).then(function (pr) {
+    pointsResult = pr;
+    // ⚠️ 兑换已禁用，直接跳过
+    return "已禁用";
+  }).then(function (er) {
+    // 不再调用兑换接口
+    return getStatus(cookie, domain);
+  }).then(function (sa) {
+    statusAfter = sa;
+
+    var icon = checkinResult.code === 0 ? "✅" : checkinResult.code === 1 ? "🔁" : "❌";
+    Logger.status(icon, checkinResult.status);
+    if (checkinResult.points !== "0") Logger.points("+" + checkinResult.points);
+    Logger.daysLeft(statusBefore.leftDays + " → " + statusAfter.leftDays);
+    Logger.balance(pointsResult.points);
+    Logger.action("兑换: 已禁用 🚫");  // 显示兑换已禁用
+    if (checkinResult.message) Logger.message(checkinResult.message);
+    Logger.separator();
+
+    var displayName = accountEmail !== "unknown" ? accountEmail : "Account #" + accountIndex;
+
+    return {
+      accountIndex: accountIndex,
+      domain: domain,
+      email: displayName,
+      status: checkinResult.status,
+      code: checkinResult.code,
+      message: checkinResult.message,
+      earnedPoints: checkinResult.points,
+      totalPoints: pointsResult.points,
+      daysBefore: statusBefore.leftDays,
+      daysAfter: statusAfter.leftDays,
+      exchange: "已禁用 🚫"  // 显示兑换已禁用
+    };
+  });
+}
+
+// ========== 请求拦截（抓包保存 Cookie） ==========
+if (isGetHeader) {
+  Logger.scriptStart(SCRIPT_NAME, SCRIPT_VERSION, getPlatform(), "Manual");
+
+  var reqUrl = ($request && $request.url) || "";
+  var doReset = /__GLaDOS_RESET__/i.test(reqUrl);
+
+  var allHeaders = $request.headers || {};
+  var cookie = allHeaders.Cookie || allHeaders.cookie || "";
+  var host = getHostFromRequest();
+
+  if (doReset) {
+    // 清库触发：浏览器打开 https://glados.network/console/__GLaDOS_RESET__ 抹掉所有旧 Cookie
+    var cleared = resetAllCookies();
+    Logger.status("🧹", "已清空存储");
+    Logger.field("Domains", cleared);
+    notifyFn("GLaDOS 存储", "已清空 " + cleared + " 个域名", "重新登录后打开 console 页面重新抓包");
+    $done({});
+  } else if (!cookie || !host) {
+    Logger.status("⚠️", "抓包失败");
+    Logger.message("未获取到 Cookie 或 Host");
+    notifyFn("GLaDOS 抓包失败", "", "未获取到 Cookie 或 Host");
+    $done({});
+  } else {
+    var result = saveCookie(host, cookie);
+    var label = "账号 #" + (result.index + 1);
+    var stateText = result.isNew ? "新账号已保存" : (result.replaced ? "同账号已更新" : "已存在");
+    Logger.status("✅", stateText);
+    Logger.field("Account", label);
+    Logger.field("Domain", host);
+    notifyFn("GLaDOS 抓包", stateText, label + " | " + host);
+    $done({});
+  }
+} else {
+  // ========== 定时签到主流程 ==========
+  runTask(function () {
+    Logger.scriptStart(SCRIPT_NAME, SCRIPT_VERSION, getPlatform(), "Cron");
+
+    var savedDomains = getSavedDomains();
+    var allCookies = [];
+    for (var d = 0; d < savedDomains.length; d++) {
+      var cookies = getCookiesForDomain(savedDomains[d]);
+      for (var c = 0; c < cookies.length; c++) {
+        allCookies.push({ domain: savedDomains[d], cookie: cookies[c] });
+      }
+    }
+
+    var totalAccounts = allCookies.length;
+    if (totalAccounts === 0) {
+      Logger.envCheck(false, "Missing");
+      Logger.status("⚠️", "无 Cookie");
+      notifyFn("GLaDOS 签到", "无 Cookie", "请先抓包");
+      $done();
+      return;
+    }
+
+    Logger.envCheck(true, "Found (" + totalAccounts + ")");
+
+    var allResults = [];
+    var idx = 0;
+
+    function next() {
+      if (idx >= allCookies.length) {
+        var ok = allResults.filter(function (r) { return r.code === 0; }).length;
+        var dup = allResults.filter(function (r) { return r.code === 1; }).length;
+        var fail = allResults.filter(function (r) { return r.code !== 0 && r.code !== 1; }).length;
+
+        var resultText = "成功" + ok + " 重复" + dup + " 失败" + fail;
+        Logger.summary(totalAccounts, ok, dup, fail, resultText);
+
+        // 汇总弹窗（3行）
+        notifyFn("GLaDOS", "签到完成（兑换已禁用）", "账号 " + totalAccounts + " | ✅" + ok + " 🔁" + dup + " ❌" + fail);
+
+        // 逐账号弹窗（每个3行）
+        for (var r = 0; r < allResults.length; r++) {
+          var res = allResults[r];
+          var icon = res.code === 0 ? "✅" : res.code === 1 ? "🔁" : "❌";
+          var pts = res.earnedPoints !== "0" ? " | +" + res.earnedPoints + "积分" : "";
+          notifyFn(icon + " " + res.email, res.status + pts, "剩余 " + res.daysAfter + " | 积分 " + res.totalPoints + " | 兑换已禁用");
+        }
+        $done();
+        return;
+      }
+
+      var item = allCookies[idx];
+      idx++;
+      checkinForAccount(item.cookie, item.domain, idx).then(function (result) {
+        allResults.push(result);
+        next();
+      });
+    }
+
+    next();
+  });
+}

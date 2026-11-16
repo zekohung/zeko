@@ -1,0 +1,18 @@
+#!name=GLaDOS 自动签到（小火箭）
+#!desc=GLaDOS / Railgun 自动签到 + 积分查询，多账号，抓包存 Cookie，兑换已禁用
+#!system=ios
+
+[Script]
+# 定时签到：每天 07:10（cronexp 用双引号；wakeup=true 让锁屏时也能唤醒）
+glados_checkin = type=cron,cronexp="10 7 * * *",wakeup=true,timeout=120,script-path=https://raw.githubusercontent.com/zekohung/zeko/main/glados.js
+
+# 抓包保存 Cookie：pattern 不带 $ 结尾，带 ?t=任意数字 的强制刷新同样触发
+# 清库触发：浏览器打开 https://glados.network/console/__GLaDOS_RESET__ 抹掉全部旧 Cookie
+glados_cookie_network = type=http-request,pattern=^https:\/\/glados\.network\/console\/,requires-body=0,script-path=https://raw.githubusercontent.com/zekohung/zeko/main/glados.js
+glados_cookie_railgun = type=http-request,pattern=^https:\/\/railgun\.info\/console\/,requires-body=0,script-path=https://raw.githubusercontent.com/zekohung/zeko/main/glados.js
+glados_cookie_vip = type=http-request,pattern=^https:\/\/glados\.vip\/console\/,requires-body=0,script-path=https://raw.githubusercontent.com/zekohung/zeko/main/glados.js
+glados_cookie_one = type=http-request,pattern=^https:\/\/glados\.one\/console\/,requires-body=0,script-path=https://raw.githubusercontent.com/zekohung/zeko/main/glados.js
+glados_cookie_space = type=http-request,pattern=^https:\/\/glados\.space\/console\/,requires-body=0,script-path=https://raw.githubusercontent.com/zekohung/zeko/main/glados.js
+
+[MITM]
+hostname = %APPEND% glados.network, railgun.info, glados.vip, glados.one, glados.space
