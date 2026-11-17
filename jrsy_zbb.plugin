@@ -1,80 +1,136 @@
 #!name=今日水印相机 去开屏广告(抓包版)
-#!desc=依据 2026-10-25 真机 Loon 抓包(HAR 32 条)编写：核心拦截 App 自有广告平台 ad.xhey.top(开屏投放/曝光上报)，并对抓包中已初始化的快手联盟等广告 SDK 做兜底拦截。纯域名规则，不需要 MitM 证书。
+#!desc=全量版：按 2026-11-17 真机抓包(HAR 229 条 / App 3.0.476)把开屏决策链与全部已接入联盟域一起拦掉。纯域名规则，不需要 MitM 证书。开屏 + 信息流 + 插屏 + icon 位一起清。
 #!author=PI-Desktop
 #!category=去广告
 #!system=ios
 
 [Rule]
-# ════════════════════════════════════════════════════════════
-# A. 抓包实证：本次 HAR 里直接命中的广告域名（核心，勿删）
-# ════════════════════════════════════════════════════════════
+# ════════════════════════════════════════════════════════════════
+# 0. 这次抓包改掉了旧结论，先说清三件事
+# ════════════════════════════════════════════════════════════════
+# ① 开屏不是 H5。旧版说"广告跑在 WKWebView 里"，那是 3.0.415 时凭
+#    /next/ad/event/track/delivery/exposure 的 WebKit UA 推的。
+#    3.0.476 的实测：开屏决策链上 8 条请求的 UA 全是
+#    "今日相机/202610181924 CFNetwork/1492.0.1"，整份 HAR 里
+#    打到 *.xhey.top 的 WebKit UA 请求是 0 条。开屏是原生 SDK 瀑布。
+# ② 开屏的真实链路（按发生顺序，接口全在 ad.xhey.top）：
+#    ad_pos(下发含"iOS开屏"的 16 个位)
+#      → client_bidding_v2(adType=splashScreenAd) 40KB 竞价瀑布
+#      → appstart/adx/v3/rtb_sdk(adType=splashScreenAd) 成交并下发 sdkToken
+#      → bidding_callback 回执
+#    rtb_api(adType=splashScreenAd) 这次是 {"code":204} 无填充。
+# ③ 开屏位号 1001 已被抓包证实：rtb 请求体 tag.posIdExposuredList
+#    里 posId="1001"、exposuredNum=3，与静态分析里 adStrategy.json
+#    的开屏策略 10001 / 广告位 1001 完全对上。
+#
+# 开屏成交回执（证据最硬的一条）：
+#   client_bidding_v2 里 {"sdkType":"taku","dspID":"2034156186718879744",
+#                         "tagID":"b69d74d7053ec4","price":500}
+#   bidding_callback 回执 {"dspID":"2034156186718879744",
+#                          "tagID":"b69d74d7053ec4","winPrice":7406.06}
+#   → 本次开屏由 taku(TopOn/AnyThink) 聚合成交，出价 7406。
+#   旧插件里没有 taku/1rtb 系域名，这是"拦了还出开屏"的漏洞。
 
-# A1 · App 自有广告平台
-# 证据：HAR #17
-#   GET https://ad.xhey.top/next/ad/event/track/delivery/exposure
-#       ?plan_id=2036338164998234112&ad_type=3&os=1&device_id=...
-#   · ad_type=3 即开屏位；plan_id 为投放计划 ID
-#   · 该请求的 UA / Accept-Language 是 Safari(WKWebView) 风格，而 App 原生请求用的是
-#     "XCamera/3.0.415 (com.xhey.XCamera; ...) Alamofire/5.4.3"
-#     → 开屏广告是跑在 WebView 里的 H5 页面，页面与素材都挂在 ad.xhey.top 上
-#   · 该域下只有 /next/ad/** 广告接口（另一台 www.xhey.top 是官网、sareport.xhey.top 是埋点），
-#     所以整域拦截不会影响业务功能
+# ════════════════════════════════════════════════════════════════
+# A. 自有广告平台（核心，勿删）
+# ════════════════════════════════════════════════════════════════
+# 该域下只有广告类接口：
+#   /next/app/adx/ad_pos                       广告位（16 个，含开屏）
+#   /next/app/adx/client_bidding_v2            竞价瀑布
+#   /next/app/adx/fetch_exposure_config_v2     曝光频控策略
+#   /next/app/adx/fetch_real_ecpm_data         各广告位 eCPM（开屏 6092）
+#   /next/app/adx/set_app_list                 已装应用上报
+#   /next/promote/operation/appstart/adx/v3/*  开屏投放 rtb_api / rtb_sdk
+#   /next/promote/operation/appstart/adx/v2/ping
+#   /next/ad/event/track/adx/bidding_callback  成交回执
+#   /next/app/ad_plan/delivery/plans           自营投放计划
+# 会员、水印、定位、天气、团队等业务接口全部在 today.xhey.top（下发时是
+# 裸 IP 120.79.224.219），不在本域，整域拦不影响功能。
 DOMAIN-SUFFIX,ad.xhey.top,REJECT
-# 若拦截后开屏一闪出现「无法打开网页」白页，把上一行换成（返回 1px 透明图，WebView 不报错）：
-# DOMAIN-SUFFIX,ad.xhey.top,REJECT-TINYGIF
 
-# A2 · 快手联盟 SDK（启动即初始化）
-# 证据：HAR #20 / #1
-#   POST https://open.e.kuaishou.com/rest/e/v3/open/config   (appId=1215300001，UA 带 KSAD-(IOS)-5.4.10.1)
-#   POST https://open.e.kuaishou.com/rest/e/v3/open/logBatch
-# 拦掉初始化/配置后快手联盟拿不到配置，回落为「无填充」
-DOMAIN-SUFFIX,open.e.kuaishou.com,REJECT
-# 素材 CDN 与联盟网关（快手联盟公开端点，兜底）
-DOMAIN-SUFFIX,ad.e.kuaishou.com,REJECT
-DOMAIN-SUFFIX,kuaishouzt.com,REJECT
-DOMAIN-SUFFIX,kwaicdn.com,REJECT
+# ════════════════════════════════════════════════════════════════
+# B. taku / TopOn(AnyThink) 聚合 —— 本次开屏的实际成交方
+# ════════════════════════════════════════════════════════════════
+# mores.anythinktech.com   聚合 SDK 配置(taku_adx_ext_res_json.txt)
+# sdk.1rtb.net / s.1rtb.net  req_ad 竞价 + notice 回执（10 + 1 条）
+# cdn.1rtb.com             素材 CDN（14 条：jd/taobao/meituan/eleme…）
+# *.statisticslinks.com    竞价/落地页回执（tk. / da. / adx-micro.）
+# s.tuia.cn                推啊广告 SDK(init/cathay/global config)
+DOMAIN-SUFFIX,anythinktech.com,REJECT
+DOMAIN-SUFFIX,1rtb.net,REJECT
+DOMAIN-SUFFIX,1rtb.com,REJECT
+DOMAIN-SUFFIX,statisticslinks.com,REJECT
+DOMAIN-SUFFIX,tuia.cn,REJECT
 
-# ════════════════════════════════════════════════════════════
-# B. 兜底：静态分析确认已集成、但本次抓包里没出现的联盟端点
-#    （本次启动的开屏由自有平台承载，未走到这些联盟；保留用于别处广告位/不同策略命中）
-#    如确认用不上，可整段注释掉，只留 A 段
-# ════════════════════════════════════════════════════════════
-
-# B1 · 穿山甲 / Pangle / GroMore（字节）—— 证据：IPA 内 CSJAdSDK.bundle、TTSDK*.framework
-DOMAIN-KEYWORD,pangolin-sdk-toutiao,REJECT
-DOMAIN-KEYWORD,pglstatp-toutiao,REJECT
-
-# B2 · 优量汇 GDT（腾讯）—— 证据：IPA 内 GDTMobSDK.framework、GDTSplashAd
+# ════════════════════════════════════════════════════════════════
+# C. 优量汇 GDT（腾讯）
+# ════════════════════════════════════════════════════════════════
+# rtb_sdk 也直接下发过 ylh 的 tagID=4124599666211911 + sdkToken，
+# 素材与上报走 gdfp.gifshow.com（HAR 2 条）。
+DOMAIN-SUFFIX,gdfp.gifshow.com,REJECT
 DOMAIN-SUFFIX,gdt.qq.com,REJECT
 DOMAIN-SUFFIX,pgdt.gtimg.com,REJECT
 DOMAIN-SUFFIX,pgdt.gtimg.cn,REJECT
 
-# B3 · 百度联盟 —— 证据：IPA 内 baidumobadsdk.bundle、MSAdSDK.bundle
+# ════════════════════════════════════════════════════════════════
+# D. 快手联盟
+# ════════════════════════════════════════════════════════════════
+# open.e.kuaishou.com 10 条（config / univ 竞价 / logBatch），
+# kwaicdn 是素材 CDN，kuaishouzt 是联盟网关。
+DOMAIN-SUFFIX,open.e.kuaishou.com,REJECT
+DOMAIN-SUFFIX,ad.e.kuaishou.com,REJECT
+DOMAIN-SUFFIX,kuaishouzt.com,REJECT
+DOMAIN-SUFFIX,kwaicdn.com,REJECT
+
+# ════════════════════════════════════════════════════════════════
+# E. 穿山甲 / Pangle（字节）
+# ════════════════════════════════════════════════════════════════
+# api-access.pangolin-sdk-toutiao(1).com 共 39 条 stats/get_ads/settings，
+# sf3/sf6-fe-tos.pglstatp-toutiao.com 是渲染器与素材。
+DOMAIN-KEYWORD,pangolin-sdk-toutiao,REJECT
+DOMAIN-KEYWORD,pglstatp-toutiao,REJECT
+DOMAIN-SUFFIX,webcast-open.douyin.com,REJECT
+
+# ════════════════════════════════════════════════════════════════
+# F. 百度联盟
+# ════════════════════════════════════════════════════════════════
+# mobads.baidu.com/cpro/ui/mads.php 10 条，bgg.baidu.com 落地页，
+# mobads-pre-config.cdn.bcebos.com 预配置。
 DOMAIN-SUFFIX,mobads.baidu.com,REJECT
 DOMAIN-SUFFIX,mobads-logs.baidu.com,REJECT
 DOMAIN-SUFFIX,cpro.baidu.com,REJECT
+DOMAIN-SUFFIX,bgg.baidu.com,REJECT
+DOMAIN-SUFFIX,mobads-pre-config.cdn.bcebos.com,REJECT
 
-# ════════════════════════════════════════════════════════════
-# C. 可选 / 慎用（默认注释，需要时自行放开）
-# ════════════════════════════════════════════════════════════
-# 优量汇上报域，域名较通用，放开前确认不影响其它腾讯服务
+# ════════════════════════════════════════════════════════════════
+# G. 阿里汇川（联盟竞价回调）
+# ════════════════════════════════════════════════════════════════
+DOMAIN-SUFFIX,alsc-cube.alibaba.com,REJECT
+DOMAIN-SUFFIX,alsc-ug-monitor-callback.alibaba.com,REJECT
+
+# ════════════════════════════════════════════════════════════════
+# H. 可选 / 默认关掉（放开前想清楚副作用）
+# ════════════════════════════════════════════════════════════════
+# 腾讯通用上报域，接了腾讯其它服务时一起受影响
 # DOMAIN-SUFFIX,e.qq.com,REJECT
-# 字节系万能域：会连字节 SDK 的域名配置(TNC)一起拦掉
+# 字节 SDK 域名配置(TNC)，拦了可能影响字节系其它 SDK
 # DOMAIN-SUFFIX,zijieapi.com,REJECT
-# 穿山甲纯上报网关（HAR #14），只少数据，不能减少广告
+# 穿山甲纯上报，拦了只少数据
 # DOMAIN-SUFFIX,mssdk.volces.com,REJECT
-# 某广告聚合 SDK 的全局配置（HAR #26，aliyun OSS 上的 iOSConfig.txt，
-# 含 splashShowType/interstitialShowType/rewardShowType/adWindowEnable）
-# 字段语义未验证，拦掉可能让它回落内置默认值（照样出广告），故默认不动
+# 优量汇 H5 落地页性能上报（i.gtimg.cn），拦与不拦都不影响开屏
+# DOMAIN-SUFFIX,i.gtimg.cn,REJECT
+# 某聚合 SDK 的全局配置（含 splashShowType/adWindowEnable），
+# 字段语义未验证，拦掉可能回落内置默认值（照样出广告）
 # DOMAIN-SUFFIX,jt-sdk-ios.oss-cn-beijing.aliyuncs.com,REJECT
 
-# ════════════════════════════════════════════════════════════
-# D. 明确不要拦（本次抓包里出现过的非广告域名，拦了会出问题）
-# ════════════════════════════════════════════════════════════
-# www.xhey.top        App 官网/H5 入口（HAR #16、#19）
-# sareport.xhey.top   神策埋点（HAR #0/#2/#15/#23）
-# cgi.connect.qq.com  QQ 开放平台登录/分享配置（HAR #25，拦了可能登录异常）
-# 162.14.3.250        GetOpenSSOIPList，腾讯 IM/登录（HAR #24）
-# abtest-tx-beijing-01.saas.sensorsdata.cn   神策 A/B（HAR #6 等）
-# xiaoheikeji.sfn-tx-beijing-01.saas.sensorsdata.cn  神策弹窗配置（HAR #30，不算开屏广告）
-# dualstack-*/amap.com、short.weixin.qq.com   定位与微信隧道
+# ════════════════════════════════════════════════════════════════
+# I. 明确不要拦（拦了会坏功能）
+# ════════════════════════════════════════════════════════════════
+# today.xhey.top / 裸 IP 120.79.224.219   业务 API（会员、水印、定位、团队、天气）
+# net-cloud.xhey.top      头像与水印配置 CDN
+# sareport.xhey.top       神策埋点（6 条）
+# *.saas.sensorsdata.cn   神策 A/B 与弹窗配置
+# cgi.connect.qq.com      QQ 开放平台登录/分享
+# dualstack-*.amap.com    高德定位
+# apmplus.volces.com      字节 APM 监控（不是广告）
+# pro.bugly.qq.com        腾讯 Bugly 崩溃上报
