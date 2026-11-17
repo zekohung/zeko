@@ -1,0 +1,9 @@
+#!name=CamScanner 高级特权
+#!desc=改写 ap*.intsig.net 的 query_property 特权响应，expiry 解锁；脚本走远端 raw 直链，自带响应头清理
+
+[Script]
+camscanner-vip = type=http-response,pattern=^https://(api|api-cs)\.intsig\.net/purchase/cs/query_property(\?|$),requires-body=true,max-size=1048576,timeout=10,script-path=https://raw.githubusercontent.com/zekohung/zeko/main/CamScanner-vip.js
+# 自定义到期时间：在上面这行末尾追加 argument={"expiry":"4102444799"}（不追加则用上游默认 2013017600）
+
+[MITM]
+hostname = %APPEND% ap*.intsig.net
