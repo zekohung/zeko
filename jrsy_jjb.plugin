@@ -1,0 +1,44 @@
+#!name=今日水印相机 去开屏广告(进阶)
+#!desc=基础域名拦截 + 对 App 自有 API(*.xhey.top)响应净化开屏载荷。两种写法任选：A 纯 Rewrite 定点 reject-dict（需填入真实开屏接口），B Rewrite+Script（可处理混合 JSON）。需要 MitM。
+#!system=ios
+# ⚠ 已被「今日水印相机-去开屏广告-抓包版.plugin」取代：抓包证实开屏是 ad.xhey.top 上的 H5，
+#   本版的 JSON 净化脚本对 H5 页面无效，且需要 MitM。保留作对照，勿同时启用。
+
+[Rule]
+# ── 穿山甲 / Pangle / GroMore（字节） ──
+DOMAIN-KEYWORD,pangolin-sdk-toutiao,REJECT
+DOMAIN-KEYWORD,pglstatp-toutiao,REJECT
+DOMAIN-SUFFIX,zijieapi.com,REJECT
+# ── 优量汇 GDT（腾讯） ──
+DOMAIN-SUFFIX,gdt.qq.com,REJECT
+DOMAIN-SUFFIX,e.qq.com,REJECT
+DOMAIN-SUFFIX,pgdt.gtimg.com,REJECT
+DOMAIN-SUFFIX,pgdt.gtimg.cn,REJECT
+# ── 快手联盟 ──
+DOMAIN-SUFFIX,kuaishouzt.com,REJECT
+DOMAIN-SUFFIX,kwaicdn.com,REJECT
+# ── 百度联盟 ──
+DOMAIN-SUFFIX,mobads.baidu.com,REJECT
+DOMAIN-SUFFIX,mobads-logs.baidu.com,REJECT
+DOMAIN-SUFFIX,cpro.baidu.com,REJECT
+
+[Rewrite]
+# 写法 A：纯插件、不需要任何 JS。
+# 已知开屏接口后，取消下一行注释并把 URL 换成真实接口即可（Loon 会直接返回空 JSON {}）。
+# 证据：开屏广告位 1001，属自有广告平台下发，接口路径需真机抓包确认。
+# ^https?:\/\/[a-z0-9-]+\.xhey\.top\/ad\/splash reject-dict
+
+[Script]
+# 写法 B：需要把 xcam-nosplash.js 放到 Loon 的脚本目录（或改成 raw 链接）。
+# 只保留其中之一，避免重复处理。
+http-response ^https?:\/\/([a-zA-Z0-9-]+\.)*xhey\.top\/ script-path=xcam-nosplash.js,tag=净屏-清空开屏广告,requires-body=true,binary-body-mode=false
+
+[Mitm]
+hostname = %APPEND% *.xhey.top
+
+# ── 使用说明 ──
+# 1. Loon 插件只能引用外部 .js，没有内联脚本；不想用 JS 就走写法 A。
+# 2. 开着 MitM 才能改 HTTPS；纯 [Rule] 的域名拦截不需要 MitM。
+# 3. 生效判据：日志出现 [xcam-nosplash] 已清理开屏广告节点 N 处（写法 B），
+#    或开屏请求在 Loon 记录里显示 reject-dict（写法 A）。
+# 4. 若开启后 App 白屏/无法联网 → 存在证书校验，停用本插件，仅用基础版。
